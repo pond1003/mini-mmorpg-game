@@ -1,0 +1,22 @@
+# Godot cache / exports (regenerated on open)
+.godot/
+export/
+*.tmp
+
+# Godot editor binaries — download Godot 4.7.2 portable into tools/godot/ on each machine
+tools/godot/
+
+# Source asset pack (already copied into shadow_ninja_godot/assets; re-download from itch.io if needed)
+tools/NinjaAdventure/
+tools/NinjaAdventure.zip
+
+# Third-party Sinjid Remake build used only as reference
+sinjid/SinjidRemake_v0.6.2/
+sinjid/SinjidRemake_v0.6.2.zip
+
+# Python / OS junk
+__pycache__/
+*.pyc
+Thumbs.db
+desktop.ini
+.DS_Store

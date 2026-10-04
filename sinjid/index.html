@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shadow Ninja</title>
+<link href="https://fonts.googleapis.com/css2?family=Mitr:wght@300;400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body data-state="title">
+<div id="app">
+  <header>
+    <h1>忍 <span>Shadow</span> Ninja</h1>
+    <div id="hud"></div>
+  </header>
+
+  <section id="title-screen" class="screen on">
+    <h2>忍 <span>Shadow</span> Ninja</h2>
+    <p>RPG นินจาเทิร์นเบส · เดินสำรวจโลก · ดาบคาตานะ · ดาวกระจาย · นินจุตสึ</p>
+    <div id="title-main"><input id="pname" maxlength="14" placeholder="ชื่อนินจา" value="ซินจิด"></div>
+    <button class="primary" id="btn-new">เริ่มเกมใหม่</button>
+    <button id="btn-continue">เล่นต่อ</button>
+    <div id="class-pick">
+      <h3>เลือกสายของคุณ</h3>
+      <div id="class-cards"></div>
+      <button class="primary" id="btn-start" disabled>เริ่มผจญภัย</button> <button id="btn-back">กลับ</button>
+    </div>
+    <p class="small" style="margin-top:24px">WASD เดิน · Shift วิ่ง · E คุย/เปิดหีบ · I เมนู · M แผนที่ย่อ</p>
+  </section>
+
+  <section id="game" class="screen">
+    <div id="stage">
+      <canvas id="cv" width="960" height="540"></canvas>
+      <div id="whud"></div>
+      <div id="toasts"></div>
+      <div id="dialog"></div>
+      <div id="menu"></div>
+      <div id="pad">
+        <button data-k="w">▲</button><button data-k="a">◀</button><button data-k="s">▼</button><button data-k="d">▶</button>
+        <button data-k="e">E</button><button data-k="i">I</button>
+      </div>
+    </div>
+    <div id="battle-ui">
+      <div id="log"></div>
+      <div id="actions" class="panel">
+        <div id="ult"></div>
+        <div class="tabs" id="act-tabs"></div>
+        <div id="skillbtns"></div>
+      </div>
+    </div>
+    <p id="help" class="small">WASD/ลูกศร เดิน · Shift วิ่ง · E คุย/เปิดหีบ · I เมนู · M แผนที่ย่อ · เดินชนศัตรูเพื่อต่อสู้</p>
+  </section>
+</div>
+
+<div id="modal"><div class="panel" id="modal-body"></div></div>
+<div id="bagtip"></div>
+
+<script src="js/data.js"></script>
+<script src="js/core.js"></script>
+<script src="js/draw.js"></script>
+<script src="js/battle.js"></script>
+<script src="js/world.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/bag.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

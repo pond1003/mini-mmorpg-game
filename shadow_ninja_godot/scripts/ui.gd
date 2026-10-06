@@ -42,6 +42,10 @@ var doll_spr: AnimatedSprite2D
 var title: Control
 var pick_cls := ""
 
+const Updater := preload("res://scripts/updater.gd")
+var updater: Node
+var update_checked := false
+
 func _ready() -> void:
 	layer = 10
 	root = Control.new()
@@ -54,6 +58,8 @@ func _ready() -> void:
 	_build_menu()
 	_build_modal()
 	_build_title()
+	updater = Updater.new()
+	add_child(updater)
 	toast_box = UIKit.vbox(6)
 	toast_box.position = Vector2(340, 70)
 	toast_box.size = Vector2(600, 10)
@@ -1046,13 +1052,13 @@ func toggle_autorun() -> void:
 
 func _menu_sys() -> void:
 	menu_body.add_child(UIKit.label("ระบบ", 22, UIKit.GOLD, true))
-	row(menu_body, "", "เพลงประกอบ", "", [["เปิด" if G.P.get("music", true) else "ปิด", func() -> void:
-		G.P.music = not G.P.get("music", true)
+	row(menu_body, "", "เพลงประกอบ", "", [["เปิด" if G.P.get("music", false) else "ปิด", func() -> void:
+		G.P.music = not G.P.get("music", false)
 		G.save_game()
 		Sfx.refresh_music()
 		render_menu()]])
-	row(menu_body, "", "เสียงประกอบ", "", [["เปิด" if G.P.get("sfx", true) else "ปิด", func() -> void:
-		G.P.sfx = not G.P.get("sfx", true)
+	row(menu_body, "", "เสียงประกอบ", "", [["เปิด" if G.P.get("sfx", false) else "ปิด", func() -> void:
+		G.P.sfx = not G.P.get("sfx", false)
 		G.save_game()
 		render_menu()]])
 	var hm: String = G.P.get("halloween", "auto")
@@ -1069,6 +1075,10 @@ func _menu_sys() -> void:
 	row(menu_body, "", "บันทึกเกม", "บันทึกอัตโนมัติเมื่อเปลี่ยนพื้นที่/จบการต่อสู้/พักโรงเตี๊ยม", [["บันทึก", func() -> void:
 		G.save_game()
 		toast("บันทึกแล้ว", Color("#9be37a"))]])
+	row(menu_body, "", "อัปเดตเกม", "เวอร์ชัน v%s%s" % [updater.version(), "" if _can_update() else " · เช็กได้เฉพาะตัวเกมที่ export แล้ว"],
+		[["เช็กอัปเดต", func() -> void:
+			close_menu()
+			_check_update(true), not _can_update()]])
 	row(menu_body, "", "เปลี่ยนตัวละคร", "บันทึกช่อง %d แล้วกลับหน้าแรกเพื่อเลือกเซฟอื่น" % G.slot, [["กลับหน้าแรก", func() -> void:
 		G.save_game()
 		close_menu()
@@ -1448,6 +1458,51 @@ func show_title() -> void:
 	hb.add_child(b1)
 	hb.add_child(b2)
 	v.add_child(hb)
+	var ver := UIKit.label("v" + updater.version(), 14, UIKit.MUTED)
+	ver.position = Vector2(1180, 8)
+	title.add_child(ver)
+	if _can_update() and not update_checked:
+		# hold the start buttons until the first update check answers (or times out)
+		update_checked = true
+		b1.disabled = true
+		b2.disabled = true
+		var st := _center_label(v, "กำลังตรวจสอบอัปเดต...", 16, UIKit.MUTED)
+		await _check_update(false)
+		if is_instance_valid(st):
+			st.queue_free()
+			b1.disabled = false
+			b2.disabled = not G.any_save()
+
+func _can_update() -> bool: return updater.enabled() and not G.testing
+
+## Ask GitHub for a newer patch; verbose=false (title screen) only shows a dialog when there is one
+func _check_update(verbose: bool) -> void:
+	var info: Dictionary = await updater.check(30.0 if verbose else 8.0)
+	if not verbose and not title.visible: return
+	if not info.ok:
+		if verbose: message("เช็กอัปเดตไม่ได้", [info.error], Color("#ff8f80"))
+		return
+	if not info.newer:
+		if verbose: message("เป็นเวอร์ชันล่าสุดแล้ว", ["v%s" % updater.version()])
+		return
+	var box := open_modal(560)
+	_title(box, "มี patch ใหม่ v%s" % info.version)
+	_center_label(box, "เวอร์ชันปัจจุบัน v%s · ขนาดดาวน์โหลด %.1f MB" % [updater.version(), info.size / 1048576.0], 16, UIKit.MUTED)
+	if info.need_exe: _center_label(box, "รอบนี้อัปเดตตัวเกม (exe) ด้วย จึงใช้เวลาโหลดนานกว่าปกติ", 16, Color("#ffd34d"))
+	var notes: String = info.notes.strip_edges()
+	if notes != "": _center_label(box, notes.left(600), 16)
+	_buttons(box, [["อัปเดตเลย", func() -> void: _apply_update(info)], ["ภายหลัง", close_modal]])
+
+func _apply_update(info: Dictionary) -> void:
+	var box := open_modal(480)
+	_title(box, "กำลังดาวน์โหลด patch...")
+	_center_label(box, "เกมจะปิดแล้วเปิดใหม่เองเมื่อเสร็จ", 16, UIKit.MUTED)
+	var err: String = await updater.download(info)
+	if err != "":
+		message("อัปเดตไม่สำเร็จ", [err], Color("#ff8f80"))
+		return
+	G.save_game()
+	updater.restart_into_patch()
 
 ## Save-slot list. mode "load" = continue a character, "new" = pick a slot for a new one
 func show_slots(mode: String, confirm := -1) -> void:
@@ -1552,6 +1607,7 @@ func show_class_select() -> void:
 	var card_nodes := []
 	for id in G.CLASSES:
 		var C: Dictionary = G.CLASSES[id]
+		if C.get("hidden", false): continue
 		var pn := UIKit.panel("nine_path_bg.png", [14, 12, 14, 12])
 		pn.custom_minimum_size = Vector2(280, 440)
 		var cv := UIKit.vbox(6)

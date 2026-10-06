@@ -176,8 +176,9 @@ const RARE_CHANCE := {21: 0.12, 22: 0.06}   # chance per (re)spawn roll of its h
 const RARE_ROLL_SEC := 45.0                  # a missed roll tries again after this long
 const STAT_TOMES := {"str": "tome_str", "agi": "tome_agi", "int": "tome_int", "vit": "tome_vit"}
 
+## "hidden" = not offered on the new-character screen (data kept so old saves / fallbacks still load)
 const CLASSES := {
-	"balanced": {"name": "สมดุล", "en": "Balanced", "desc": "รอบด้าน ใช้ได้ทั้งดาบ ดาวกระจาย และคาถา", "actor": "NinjaBlue2",
+	"balanced": {"name": "สมดุล", "en": "Balanced", "desc": "รอบด้าน ใช้ได้ทั้งดาบ ดาวกระจาย และคาถา", "actor": "NinjaBlue2", "hidden": true,
 		"base": {"str": 7, "agi": 6, "int": 6, "vit": 6}, "grow": {"str": 1, "agi": 1, "int": 1}, "hp_mul": 1.0, "mp_mul": 1.0, "crit": 0, "skills": {"slash": 1, "star": 1}},
 	"warrior": {"name": "นักรบ", "en": "Warrior", "desc": "HP และพลังดาบสูง ทนทาน แต่ MP น้อย", "actor": "SamuraiRed",
 		"base": {"str": 10, "agi": 4, "int": 3, "vit": 8}, "grow": {"str": 2, "vit": 1}, "hp_mul": 1.15, "mp_mul": 0.8, "crit": 0, "skills": {"slash": 2, "star": 1}},
@@ -267,7 +268,7 @@ func new_player(pname: String, cls: String) -> Dictionary:
 		"eq": {"weapon": "wood_katana", "throw": "iron_star", "charm": "paper_charm", "armor": "cloth"},
 		"hp": -1, "mp": -1, "map": "village", "x": (s.x + 0.5) * TS, "y": (s.y + 0.5) * TS,
 		"kills": {}, "flags": {}, "opened": {}, "quest": {"i": 0, "active": false, "base": {}}, "bounties": [],
-		"music": true, "sfx": true, "autorun": false, "wins": 0}
+		"music": false, "sfx": false, "autorun": false, "wins": 0}
 	for k in C.base: p[k] = C.base[k]
 	return p
 
@@ -409,7 +410,8 @@ func skill_desc(id: String, lv: int) -> String:
 	if s.has("stun"): t += " · สตั้น %d%%" % (s.stun[0] + s.stun[1] * lv)
 	return t
 
-func heal_amount(lv: int) -> int: return roundi((stat("int") * 4 + 25) * (1 + 0.2 * lv))
+## Grows mostly with skill level: ~13% max HP at lv1 -> ~66% at lv5 (5% max HP + INT/2 per level)
+func heal_amount(lv: int) -> int: return maxi(1, roundi((max_hp() * 0.05 + stat("int") * 0.5) * lv))
 
 func enemy_stats(stage: int) -> Dictionary:
 	var b: bool = ENEMIES[stage].get("boss", false)

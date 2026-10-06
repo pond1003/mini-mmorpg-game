@@ -21,7 +21,7 @@ func _stream(path: String) -> AudioStream:
 	return _streams[path]
 
 func play(name: String, pitch := 1.0) -> void:
-	if Engine.time_scale > 2.0 or not G.P.get("sfx", true): return
+	if Engine.time_scale > 2.0 or not G.P.get("sfx", false): return
 	for p in _players:
 		if not p.playing:
 			p.stream = _stream("res://assets/sfx/%s.wav" % name)
@@ -32,7 +32,7 @@ func play(name: String, pitch := 1.0) -> void:
 func music(name: String) -> void:
 	if name == _cur: return
 	_cur = name
-	if not G.P.get("music", true) or name == "":
+	if not G.P.get("music", false) or name == "":
 		_music.stop()
 		return
 	var s: AudioStream = _stream("res://assets/music/%s.ogg" % name)

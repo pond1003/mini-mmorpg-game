@@ -10,6 +10,12 @@ my own mini mmorpg power by cluade AI
 
 หรือเปิด Godot แล้ว Import โฟลเดอร์ `shadow_ninja_godot`
 
+## แจกเกม / ออก patch
+- `Export.bat` → `export/ShadowNinja_win64.zip` (แตก zip แล้วเปิด `ShadowNinja.exe` ได้เลย) · ต้องมี export templates 4.7.2 ใน `%APPDATA%\Godot\export_templates\4.7.2.stable\`
+- `Release.bat 1.0.1 "สิ่งที่เปลี่ยน"` → ตั้งเวอร์ชัน, build, สร้าง GitHub Release (`ShadowNinja.pck` + `ShadowNinja.exe` + `manifest.json` + zip ใน `export/release/`)
+- เกมที่ export แล้วจะเช็ก release ล่าสุดตอนเปิด (และปุ่ม "เช็กอัปเดต" ในเมนูระบบ) แล้วโหลด `.pck` ใหม่ให้เอง และโหลด `.exe` ด้วยเฉพาะเมื่อ `engine` ใน manifest ไม่ตรงกับเวอร์ชัน Godot ของเกม · repo ต้องเป็น public
+- ทดสอบกับเซิร์ฟเวอร์ในเครื่อง: ตั้ง env `SHADOW_NINJA_UPDATE_API` เป็น URL ของ JSON ที่หน้าตาเหมือน GitHub `releases/latest`
+
 ## มีอะไรในเกม
 - 4 สายอาชีพ, เดิน WASD (วิ่งอัตโนมัติ R), แมพหมู่บ้าน + 3 พื้นที่ + สุสานอีเวนต์ฮาโลวีน
 - ต่อสู้เทิร์นเบส สกิล 3 สาย + passive แบบต้นไม้สกิล Sinjid, บัพ/ดีบัพพร้อมไอคอน, โอกิ

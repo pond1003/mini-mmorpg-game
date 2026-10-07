@@ -13,6 +13,7 @@ var hud_mp: ProgressBar
 var hud_mp_l: Label
 var hud_exp: ProgressBar
 var hud_gold: Label
+var hud_boost: Label
 var hud_zone: Label
 var hud_quest: RichTextLabel
 var hud_face: TextureRect
@@ -61,8 +62,7 @@ func _ready() -> void:
 	updater = Updater.new()
 	add_child(updater)
 	toast_box = UIKit.vbox(6)
-	toast_box.position = Vector2(340, 70)
-	toast_box.size = Vector2(600, 10)
+	UIKit.anchor(toast_box, [0.5, 0, 0.5, 0], [-300, 70, 300, 80])
 	toast_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(toast_box)
 
@@ -100,9 +100,10 @@ func _build_hud() -> void:
 	v.add_child(hud_exp)
 	hud_gold = UIKit.label("", 14, UIKit.GOLD)
 	v.add_child(hud_gold)
+	hud_boost = UIKit.label("", 14, Color("#9be37a"), true)
+	v.add_child(hud_boost)
 	hud_zone = UIKit.label("", 22, UIKit.PAPER, true)
-	hud_zone.position = Vector2(0, 14)
-	hud_zone.size = Vector2(1268, 30)
+	UIKit.anchor(hud_zone, [0, 0, 1, 0], [0, 14, -12, 44])
 	hud_zone.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	hud_zone.add_theme_color_override("font_outline_color", Color.BLACK)
 	hud_zone.add_theme_constant_override("outline_size", 6)
@@ -115,15 +116,13 @@ func _build_hud() -> void:
 	hud_quest.custom_minimum_size = Vector2(280, 0)
 	qp.add_child(hud_quest)
 	prompt = UIKit.label("", 20, Color("#ffe9b0"), true)
-	prompt.position = Vector2(0, 600)
-	prompt.size = Vector2(1280, 30)
+	UIKit.anchor(prompt, [0, 1, 1, 1], [0, -120, 0, -90])
 	prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	prompt.add_theme_color_override("font_outline_color", Color.BLACK)
 	prompt.add_theme_constant_override("outline_size", 7)
 	hud.add_child(prompt)
 	var help := UIKit.label("WASD เดิน · Shift วิ่ง · R สลับวิ่งตลอด · E คุย/เปิดหีบ · I เมนู · ชนศัตรูเพื่อต่อสู้", 14, Color(1, 1, 1, 0.75))
-	help.position = Vector2(0, 692)
-	help.size = Vector2(1270, 20)
+	UIKit.anchor(help, [0, 1, 1, 1], [0, -28, -10, -8])
 	help.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	help.add_theme_color_override("font_outline_color", Color.BLACK)
 	help.add_theme_constant_override("outline_size", 4)
@@ -146,6 +145,9 @@ func update_hud(zone: String, prompt_text: String) -> void:
 	hud_gold.text = "ทอง %d   EXP %d/%d%s" % [G.P.gold, G.P.exp, G.exp_need(G.P.lvl), "   [มีแต้มเหลือ กด I]" if G.P.sp > 0 or G.P.skp > 0 else ""]
 	hud_zone.text = zone
 	prompt.text = prompt_text
+	hud_boost.visible = G.exp_boost_on()
+	if hud_boost.visible:
+		hud_boost.text = "★ EXP x%d  เหลือ %s%s" % [G.EXP_BOOST_MUL, G.mmss(G.exp_boost_left()), "  (หยุดเวลา)" if blocking() else ""]
 	var q := G.current_quest()
 	var t := ""
 	if q.is_empty(): t = "[color=#ffd34d]ภารกิจหลักสำเร็จครบแล้ว![/color]"
@@ -155,6 +157,126 @@ func update_hud(zone: String, prompt_text: String) -> void:
 		for r in G.quest_progress(q): t += "\n· %s %d/%d" % [G.ENEMIES[r.s].name, r.have, r.n]
 		if G.quest_done(q): t += "\n[color=#9be37a]✔ กลับไปรายงานผู้ใหญ่บ้าน[/color]"
 	if hud_quest.text != t: hud_quest.text = t
+
+# ================= bug report (F8) =================
+const BUG_DIR := "user://bug_reports"
+var bug_shot: Image
+
+## Grab the screen first (so the report shows what the player saw), then ask for a description
+func open_bug_report() -> void:
+	if modal.visible and modal_box.has_meta("bug"): return
+	await RenderingServer.frame_post_draw
+	bug_shot = get_viewport().get_texture().get_image()
+	root.move_child(modal, root.get_child_count() - 1)
+	var box := open_modal(640)
+	box.set_meta("bug", true)
+	_title(box, "แจ้งบั๊ก / ปัญหา")
+	_center_label(box, "เล่าว่าเกิดอะไรขึ้น ทำอะไรอยู่ก่อนหน้า และคาดว่าควรเป็นแบบไหน", 15, UIKit.MUTED)
+	var prev := TextureRect.new()
+	prev.texture = ImageTexture.create_from_image(bug_shot)
+	prev.custom_minimum_size = Vector2(368, 207)
+	prev.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	prev.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	prev.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	box.add_child(prev)
+	var attach := CheckBox.new()
+	attach.text = "แนบภาพหน้าจอนี้"
+	attach.button_pressed = true
+	attach.add_theme_color_override("font_color", UIKit.PAPER)
+	attach.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	box.add_child(attach)
+	var te := TextEdit.new()
+	te.custom_minimum_size = Vector2(600, 90)
+	te.placeholder_text = "เช่น สกิลสายเวทหลุดขอบจอตอนเรียนครบ 5 ตัว"
+	te.wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
+	te.add_theme_stylebox_override("normal", UIKit.flat(Color("#f3e6d0"), Color("#8a6a3a"), 2, 6))
+	te.add_theme_stylebox_override("focus", UIKit.flat(Color("#fff6e4"), UIKit.GOLD, 2, 6))
+	te.add_theme_color_override("font_color", UIKit.INK)
+	te.add_theme_color_override("font_placeholder_color", Color(0.3, 0.22, 0.15, 0.55))
+	te.add_theme_font_size_override("font_size", 17)
+	box.add_child(te)
+	var status := _center_label(box, "", 14, Color("#ff9c8f"))
+	_buttons(box, [["ส่งรายงาน", func() -> void:
+		if te.text.strip_edges() == "":
+			status.text = "พิมพ์รายละเอียดก่อนนะ"
+			return
+		var where := save_bug_report(te.text.strip_edges(), attach.button_pressed)
+		close_modal()
+		toast("บันทึกรายงานบั๊กแล้ว ขอบคุณมาก! (%s)" % where.get_file(), Color("#9be37a"))], ["ยกเลิก", close_modal]])
+	te.grab_focus.call_deferred()
+
+## Writes user://bug_reports/<time>/report.json (+ screenshot.png); returns the folder path
+func save_bug_report(text: String, with_shot: bool) -> String:
+	var stamp := Time.get_datetime_string_from_system(false, true).replace(":", "").replace(" ", "_").replace("-", "")
+	var dir := "%s%s/%s" % [BUG_DIR, "_test" if G.testing else "", stamp]
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(dir))
+	var b = main.battle
+	var info := {
+		"text": text, "time": Time.get_datetime_string_from_system(false, true),
+		"version": ProjectSettings.get_setting("application/config/version", "dev"), "engine": Engine.get_version_info().string,
+		"os": OS.get_name(), "window": str(get_window().size), "state": main.state, "slot": G.slot, "screenshot": with_shot,
+	}
+	if not G.P.is_empty():
+		info["player"] = {"name": G.P.name, "cls": G.P.cls, "lvl": G.P.lvl, "hp": "%d/%d" % [G.P.hp, G.max_hp()], "mp": "%d/%d" % [G.P.mp, G.max_mp()],
+			"gold": G.P.gold, "map": G.P.map, "pos": [roundi(G.P.x), roundi(G.P.y)], "skills": G.P.skills, "eq": G.P.eq}
+	if main.state == "battle" and not b.e.is_empty():
+		info["battle"] = {"stage": b.stage, "enemy": b.e.name, "enemy_hp": "%d/%d" % [b.e.hp, b.e.max], "tab": b.tab,
+			"log": b.log_box.get_parsed_text().strip_edges().split("\n").slice(-20)}
+	var f := FileAccess.open(dir + "/report.json", FileAccess.WRITE)
+	if f: f.store_string(JSON.stringify(info, "  "))
+	if with_shot and bug_shot: bug_shot.save_png(dir + "/screenshot.png")
+	return ProjectSettings.globalize_path(dir)
+
+# ================= ending + achievements =================
+func announce_achievements(ids: Array) -> void:
+	for id in ids:
+		Sfx.play("level")
+		toast("★ ปลดล็อกความสำเร็จ: %s" % G.ACHIEVEMENTS[id][0], UIKit.GOLD)
+
+## Shown once per character when the shogun is down and the main story is done
+func show_ending() -> void:
+	if not G.game_clear_ready(): return
+	G.P.cleared = true
+	G.P.cleared_at = Time.get_datetime_string_from_system(false, true)
+	var fresh := G.check_achievements()
+	G.save_game()
+	Sfx.play("win")
+	Sfx.music("victory")
+	root.move_child(modal, root.get_child_count() - 1)
+	var box := open_modal(640)
+	_title(box, "★ จบเกม ★", UIKit.GOLD)
+	_center_label(box, "โชกุนเงา คาเงะโมริ ล้มลงแล้ว ปราสาทเงาสลายไปพร้อมรุ่งอรุณ\nหมู่บ้านใบไม้กลับมาสงบสุข และชื่อของ %s จะถูกเล่าขานต่อไป" % G.P.name, 17)
+	var secs := int(G.P.get("play_sec", 0.0))
+	_center_label(box, "สาย%s · Lv %d · ชนะ %d ครั้ง · แพ้ %d ครั้ง · เวลาเล่น %d:%02d ชม." % [G.cls().name, G.P.lvl, int(G.P.wins), int(G.P.get("deaths", 0)), secs / 3600, (secs / 60) % 60], 16, UIKit.MUTED)
+	if fresh.size() > 0:
+		box.add_child(UIKit.label("ความสำเร็จที่ปลดล็อก", 18, UIKit.GOLD, true))
+		for id in fresh: row(box, "skills/upgrade.png", "★ " + G.ACHIEVEMENTS[id][0], G.ACHIEVEMENTS[id][1], [])
+	_center_label(box, "จะทำอะไรต่อ? เกมยังเล่นต่อได้ ล่าค่าหัว สไลม์หายาก และตีอาวุธ +10 ได้ตามใจ", 15, UIKit.MUTED)
+	_buttons(box, [["วาร์ปกลับหมู่บ้าน", func() -> void:
+		close_modal()
+		main.world.warp_to("village")], ["บันทึกและกลับหน้าหลัก", func() -> void:
+		G.save_game()
+		close_modal()
+		main.to_title()], ["เล่นต่อที่นี่", func() -> void:
+		close_modal()
+		Sfx.music(G.THEMES[main.world.theme].music)]])
+
+func _ach_rows(box: Container) -> void:
+	box.add_child(UIKit.label("ปลดล็อกแล้ว %s (นับรวมทุกช่องเซฟ)" % G.ach_count(), 16, UIKit.MUTED))
+	for id in G.ach_visible():
+		var a: Array = G.ACHIEVEMENTS[id]
+		var got: Dictionary = G.achievements.get(id, {})
+		var sub: String = a[1]
+		if not got.is_empty():
+			sub += " · โดย %s (%s) %s" % [got.get("name", "?"), G.CLASSES.get(got.get("cls", ""), G.CLASSES.balanced).name, got.get("time", "")]
+		row(box, "skills/upgrade.png" if not got.is_empty() else "skills/scroll.png", ("★ " if not got.is_empty() else "") + a[0] + ("" if not got.is_empty() else "  (ยังไม่ปลดล็อก)"), sub, [], "" if not got.is_empty() else "#555555")
+
+func open_achievements() -> void:
+	root.move_child(modal, root.get_child_count() - 1)
+	var box := open_modal(680)
+	_title(box, "ความสำเร็จ")
+	_ach_rows(box)
+	_buttons(box, [["ปิด", close_modal]])
 
 func toast(msg: String, col := Color.WHITE) -> void:
 	var pn := UIKit.panel("nine_path_bg.png", [16, 6, 16, 6])
@@ -173,7 +295,8 @@ func _build_dialog() -> void:
 	dialog.set_anchors_preset(Control.PRESET_FULL_RECT)
 	root.add_child(dialog)
 	var box := UIKit.panel("nine_path_bg.png", [16, 14, 20, 14])
-	box.position = Vector2(110, 540)
+	UIKit.anchor(box, [0.5, 1, 0.5, 1], [-530, -180, 530, -30])
+	box.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	box.custom_minimum_size = Vector2(1060, 150)
 	dialog.add_child(box)
 	var hb := UIKit.hbox(18)
@@ -301,8 +424,9 @@ func row(box: Container, icon_path: String, title: String, sub: String, btns: Ar
 	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	v.add_child(UIKit.label(title, 18))
 	if sub != "":
-		var s := UIKit.label(sub, 14, UIKit.MUTED)
-		s.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		var s := UIKit.rich(14)
+		s.add_theme_color_override("default_color", UIKit.MUTED)
+		s.text = RichTip.colorize(sub)
 		v.add_child(s)
 	hb.add_child(v)
 	for d in btns:
@@ -320,7 +444,7 @@ func battle_result(r: Dictionary, done: Callable) -> void:
 		_title(box, "ชัยชนะ!")
 		if r.get("elite", false): _center_label(box, "★ ปราบ Elite สำเร็จ! ทอง x%d · EXP x%d" % [G.ELITE_GOLD, G.ELITE_LOOT], 19, Color("#e080ff"))
 		Sfx.play("coin")
-		_center_label(box, "EXP +%d" % r.exp)
+		_center_label(box, ("EXP +%d  (ใบเพิ่มค่าประสบการณ์ x%d)" % [r.exp, G.EXP_BOOST_MUL]) if r.get("boost", false) else "EXP +%d" % r.exp)
 		_center_label(box, "\n".join(r.lines))
 		if r.lv > 0:
 			Sfx.play("level")
@@ -339,7 +463,8 @@ func battle_result(r: Dictionary, done: Callable) -> void:
 		_center_label(box, "ตีไม่ทันภายใน %d เทิร์น เลยไม่ได้อะไรเลย... ลองเตรียมสกิลแรงๆ แล้วมาใหม่" % G.RARE_TURNS)
 	elif r.res == "lose":
 		_title(box, "พ่ายแพ้...", Color("#ff8f80"))
-		_center_label(box, "คุณฟื้นขึ้นที่โรงเตี๊ยมในหมู่บ้าน เสียทอง %d" % r.lost)
+		_center_label(box, "คุณฟื้นขึ้นที่โรงเตี๊ยมในหมู่บ้าน เสียทอง %d
+เหลือ HP %d / MP %d (1%%) — พักโรงเตี๊ยม ใช้ยา หรือรอให้ฟื้นเองในหมู่บ้าน" % [r.lost, G.P.hp, G.P.mp])
 		_center_label(box, "ลองอัปค่าสถานะ เรียนสกิล ตีอาวุธ หรือซื้ออุปกรณ์ใหม่", 15, UIKit.MUTED)
 	else:
 		done.call()
@@ -491,7 +616,9 @@ func talk_elder() -> void:
 			Sfx.play("level" if lv > 0 else "coin")
 			var extra := ["EXP +%d" % q.reward.exp, "\n".join(lines)]
 			if lv > 0: extra.append("เลเวลอัป! Lv %d" % G.P.lvl)
-			message("ภารกิจสำเร็จ!", [q.title] + extra, UIKit.GOLD, talk_elder))
+			message("ภารกิจสำเร็จ!", [q.title] + extra, UIKit.GOLD, func() -> void:
+				if G.game_clear_ready(): show_ending()
+				else: talk_elder()))
 	else:
 		var prog := []
 		for r in G.quest_progress(q): prog.append("%s %d/%d" % [G.ENEMIES[r.s].name, r.have, r.n])
@@ -689,6 +816,9 @@ func open_forge(msg := "") -> void:
 			[["ตี +%d" % (r.u + 1), func() -> void: _forge(gid), not G.can_forge(r)]], G.GEAR[id].get("tint", ""))
 	_buttons(box, [["ปิด", close_modal]])
 
+func _forge_done_check() -> void:
+	announce_achievements(G.check_achievements())
+
 func _forge(id: String) -> void:
 	var r := G.forge_req(id)
 	if not G.can_forge(r): return
@@ -705,6 +835,7 @@ func _forge(id: String) -> void:
 		msg = "ล้มเหลว... อุปกรณ์ยังคงเป็น +%d" % r.u
 	G.save_game()
 	open_forge(msg)
+	_forge_done_check()
 
 # ---------- bounty board ----------
 func open_board() -> void:
@@ -755,8 +886,7 @@ func _build_menu() -> void:
 	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
 	menu.add_child(dim)
 	var pn := UIKit.panel("nine_path_bg.png", [22, 16, 22, 16])
-	pn.position = Vector2(40, 24)
-	pn.size = Vector2(1200, 672)
+	UIKit.anchor(pn, [0.5, 0.5, 0.5, 0.5], [-600, -336, 600, 336])
 	menu.add_child(pn)
 	var v := UIKit.vbox(10)
 	pn.add_child(v)
@@ -874,7 +1004,7 @@ func _skill_node(id: String) -> Button:
 	var lv: int = int(G.P.skills.get(id, 0))
 	var block := G.skill_block(id)
 	var passive: bool = s.kind == "passive"
-	var b := Button.new()
+	var b := RichTip.TipButton.new()
 	b.custom_minimum_size = Vector2(NODE, NODE)
 	b.size = Vector2(NODE, NODE)
 	b.icon = UIKit.scaled("skills/%s.png" % s.icon, 2)
@@ -972,8 +1102,8 @@ func _skill_detail(id: String) -> Control:
 	var r := UIKit.rich(16)
 	r.custom_minimum_size = Vector2(300, 0)
 	var txt := ""
-	if lv > 0: txt += "[color=#ffd34d]ตอนนี้:[/color] %s\n" % G.skill_desc(id, lv)
-	if lv < G.SKILL_MAX: txt += "[color=#9be37a]%s:[/color] %s\n" % ["เลเวลถัดไป" if lv > 0 else "เมื่อเรียน", G.skill_desc(id, lv + 1)]
+	if lv > 0: txt += "[color=#ffd34d]ตอนนี้:[/color] %s\n" % RichTip.colorize(G.skill_desc(id, lv))
+	if lv < G.SKILL_MAX: txt += "[color=#9be37a]%s:[/color] %s\n" % ["เลเวลถัดไป" if lv > 0 else "เมื่อเรียน", RichTip.colorize(G.skill_desc(id, lv + 1))]
 	txt += "\n[color=#c9b49a]เงื่อนไข[/color]\n"
 	txt += "%s เลเวลผู้เล่น %d\n" % ["[color=#7dff8a]✔[/color]" if G.P.lvl >= s.req else "[color=#ff7a6a]✘[/color]", s.req]
 	for q in s.pre:
@@ -1052,6 +1182,9 @@ func toggle_autorun() -> void:
 
 func _menu_sys() -> void:
 	menu_body.add_child(UIKit.label("ระบบ", 22, UIKit.GOLD, true))
+	row(menu_body, "", "ความสำเร็จ", "ปลดล็อกแล้ว " + G.ach_count(), [["ดู", func() -> void:
+		close_menu()
+		open_achievements()]])
 	row(menu_body, "", "เพลงประกอบ", "", [["เปิด" if G.P.get("music", false) else "ปิด", func() -> void:
 		G.P.music = not G.P.get("music", false)
 		G.save_game()
@@ -1079,6 +1212,11 @@ func _menu_sys() -> void:
 		[["เช็กอัปเดต", func() -> void:
 			close_menu()
 			_check_update(true), not _can_update()]])
+	row(menu_body, "", "แจ้งบั๊ก (F8)", "แนบภาพหน้าจอ + ข้อความ เก็บไว้ในโฟลเดอร์ bug_reports ข้างไฟล์เซฟ", [["แจ้งบั๊ก", func() -> void:
+		close_menu()
+		open_bug_report.call_deferred()], ["เปิดโฟลเดอร์", func() -> void:
+		DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(BUG_DIR))
+		OS.shell_open(ProjectSettings.globalize_path(BUG_DIR))]])
 	row(menu_body, "", "เปลี่ยนตัวละคร", "บันทึกช่อง %d แล้วกลับหน้าแรกเพื่อเลือกเซฟอื่น" % G.slot, [["กลับหน้าแรก", func() -> void:
 		G.save_game()
 		close_menu()
@@ -1092,14 +1230,14 @@ func _menu_sys() -> void:
 			close_modal()
 			main.to_title()], ["ยกเลิก", close_modal]])]])
 	menu_body.add_child(UIKit.label("ปุ่มควบคุม", 20, UIKit.GOLD))
-	var c := UIKit.label("WASD / ลูกศร = เดิน · Shift = วิ่ง · R / Caps Lock = สลับวิ่งตลอด · E / Space = คุย/เปิดหีบ · I / Tab = เมนู · Esc = ปิด\nในการต่อสู้: 1-8 = ใช้สกิล/ไอเทม · Q / E = เปลี่ยนหมวด · R = โอกิ", 16)
+	var c := UIKit.label("WASD / ลูกศร = เดิน · Shift = วิ่ง · R / Caps Lock = สลับวิ่งตลอด · F8 = แจ้งบั๊ก · E / Space = คุย/เปิดหีบ · I / Tab = เมนู · Esc = ปิด\nในการต่อสู้: 1-8 = ใช้สกิล/ไอเทม · Q / E = เปลี่ยนหมวด · R = โอกิ", 16)
 	menu_body.add_child(c)
 	menu_body.add_child(UIKit.label("เครดิต", 20, UIKit.GOLD))
 	menu_body.add_child(UIKit.label("ภาพ เสียง และเพลง: Ninja Adventure Asset Pack โดย Pixel-boy & AAA (CC0)\nฟอนต์: Kanit โดย Cadson Demak (SIL Open Font License)\nสร้างด้วย Godot Engine", 15, UIKit.MUTED))
 
 # ---------- bag (MMORPG-style) ----------
 const RARITY := [["ธรรมดา", "#b8b8b8"], ["ดี", "#5fd35f"], ["หายาก", "#4a9bff"], ["มหากาพย์", "#c070ff"], ["ตำนาน", "#ff9d2e"]]
-const ITEM_RAR := {"potion": 0, "ether": 0, "hipotion": 1, "bomb": 1, "smoke": 1, "elixir": 3, "tome_str": 4, "tome_agi": 4, "tome_int": 4, "tome_vit": 4}
+const ITEM_RAR := {"potion": 0, "ether": 0, "hipotion": 1, "bomb": 1, "smoke": 1, "elixir": 3, "exp_scroll": 2, "tome_str": 4, "tome_agi": 4, "tome_int": 4, "tome_vit": 4}
 const MAT_RAR := {"herb": 0, "iron": 0, "branch": 0, "feather": 1, "shard": 2, "ruby": 2}
 
 func _rarity(t: String, id: String) -> int:
@@ -1160,7 +1298,7 @@ func _tip(en: Dictionary, equipped := false) -> String:
 	return t
 
 func _slot(en, equipped := false, eq_slot := "") -> PanelContainer:
-	var pn := PanelContainer.new()
+	var pn := RichTip.TipPanel.new()
 	pn.custom_minimum_size = Vector2(64, 64)
 	var style := UIKit.sbox("inventory_cell.png", [4, 4, 4, 4], [6, 6, 6, 6], 4)
 	if en != null:
@@ -1218,6 +1356,12 @@ func _sell_tome(id: String) -> void:
 	toast("ขาย %s ได้ %d ทอง" % [G.ITEMS[id].name, G.ITEMS[id].sell], UIKit.GOLD)
 
 func _bag_primary(t: String, id: String) -> void:
+	if t == "item" and G.ITEMS[id].has("boost"):
+		G.use_exp_boost()
+		Sfx.play("powerup")
+		toast("ใช้ใบเพิ่มค่าประสบการณ์: EXP x%d เหลือ %s" % [G.EXP_BOOST_MUL, G.mmss(G.exp_boost_left())], Color("#9be37a"))
+		render_menu.call_deferred()
+		return
 	if t == "item" and G.ITEMS[id].has("tome"):
 		var k: String = G.ITEMS[id].tome
 		G.use_tome(id)
@@ -1427,15 +1571,19 @@ func show_title() -> void:
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
 	title.add_child(bg)
 	# parade of actors along the bottom
+	var parade_box := Control.new()
+	UIKit.anchor(parade_box, [0.5, 1, 0.5, 1], [-640, -80, 640, -80])
+	parade_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	title.add_child(parade_box)
 	var parade := Node2D.new()
-	title.add_child(parade)
+	parade_box.add_child(parade)
 	var cast := ["NinjaRed", "NinjaBlue2", "SamuraiRed", "NinjaMageBlack", "Master", "Tengu", "NinjaDark", "Samurai", "Monk", "DemonRed"]
 	for i in cast.size():
 		var a := AnimatedSprite2D.new()
 		a.sprite_frames = Sprites.actor(cast[i])
 		a.play("walk_right")
 		a.scale = Vector2(5, 5)
-		a.position = Vector2(80 + i * 125, 640)
+		a.position = Vector2(80 + i * 125, 0)
 		parade.add_child(a)
 	var cc := CenterContainer.new()
 	cc.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -1453,13 +1601,16 @@ func show_title() -> void:
 	var b1 := UIKit.button("เริ่มเกมใหม่", func() -> void: show_slots("new"), 22)
 	var b2 := UIKit.button("เล่นต่อ", func() -> void: show_slots("load"), 22)
 	b2.disabled = not G.any_save()
+	var b3 := UIKit.button("ความสำเร็จ " + G.ach_count(), open_achievements, 22)
 	var hb := UIKit.hbox(14)
 	hb.alignment = BoxContainer.ALIGNMENT_CENTER
 	hb.add_child(b1)
 	hb.add_child(b2)
+	hb.add_child(b3)
 	v.add_child(hb)
 	var ver := UIKit.label("v" + updater.version(), 14, UIKit.MUTED)
-	ver.position = Vector2(1180, 8)
+	UIKit.anchor(ver, [1, 0, 1, 0], [-160, 8, -12, 30])
+	ver.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	title.add_child(ver)
 	if _can_update() and not update_checked:
 		# hold the start buttons until the first update check answers (or times out)
@@ -1540,7 +1691,7 @@ func show_slots(mode: String, confirm := -1) -> void:
 			tv.add_child(UIKit.label("ช่อง %d — ไฟล์เสีย" % s, 20, Color("#ff8f80"), true))
 		else:
 			var cn: String = G.CLASSES.get(info.cls, G.CLASSES.balanced).name
-			tv.add_child(UIKit.label("ช่อง %d · %s  ·  สาย%s  Lv %d" % [s, info.name, cn, info.lvl], 20, UIKit.GOLD, true))
+			tv.add_child(UIKit.label("ช่อง %d · %s  ·  สาย%s  Lv %d%s" % [s, info.name, cn, info.lvl, "   ★ จบเกมแล้ว" if info.cleared else ""], 20, UIKit.GOLD, true))
 			tv.add_child(UIKit.label("%s · ทอง %d · บันทึกล่าสุด %s" % [G.MAPS.get(info.map, G.MAPS.village).name, info.gold, info.saved_at], 15, UIKit.MUTED))
 		var btns := UIKit.hbox(8)
 		hb.add_child(btns)
@@ -1580,8 +1731,7 @@ func show_class_select() -> void:
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
 	title.add_child(bg)
 	var v := UIKit.vbox(14)
-	v.position = Vector2(40, 24)
-	v.size = Vector2(1200, 670)
+	UIKit.anchor(v, [0.5, 0.5, 0.5, 0.5], [-600, -335, 600, 335])
 	title.add_child(v)
 	var t := UIKit.label("เลือกสายของคุณ", 34, UIKit.GOLD, true)
 	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER

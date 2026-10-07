@@ -4,8 +4,12 @@ extends CanvasLayer
 signal ended(result: Dictionary)
 
 const GROUND_Y := 410.0
-const PX := 330.0
-const EX := 950.0
+const PANEL_H := 262.0   # bottom action panel (fits its content: log + chakra + tabs + 2.5 skill rows)
+var PX := 330.0          # fighter x positions, recomputed from the screen width
+var EX := 950.0
+var sky: TextureRect
+var ground: TextureRect
+var scen: Node2D
 const SCALE := 6.0
 const ACT_TABS := ["katana", "shuriken", "ninjutsu", "item"]
 # status id: [name, colour, icon under assets/skills, is_buff]
@@ -97,16 +101,63 @@ func start(s: int, source) -> void:
 		chakra = minf(100.0, 15.0 * G.pas("ambush"))
 		p["first_crit"] = true
 		_log("[color=#b9a8ff]จู่โจมจากเงา! การโจมตีแรกจะคริติคอล[/color]")
+	if G.exp_boost_on(): _log("[color=#9be37a]ใบเพิ่มค่าประสบการณ์ทำงาน: EXP x%d (เหลือ %s)[/color]" % [G.EXP_BOOST_MUL, G.mmss(G.exp_boost_left())])
 	_log("[color=#c9b49a]คีย์ลัด: 1-8 ใช้สกิล · Q/E เปลี่ยนหมวด · R ใช้โอกิ[/color]")
 	Sfx.music("boss" if e.boss else "battle")
 	_refresh()
 	_render_actions()
 
+func _ready_resize() -> void:
+	if not get_viewport().size_changed.is_connected(_relayout): get_viewport().size_changed.connect(_relayout)
+
+## Fit the stage to the current screen (called on build and whenever the window changes)
+func _relayout() -> void:
+	if not visible or sky == null: return
+	var S := UIKit.screen()
+	PX = S.x * 0.258
+	EX = S.x * 0.742
+	sky.size = Vector2(S.x, GROUND_Y)
+	ground.size = Vector2(S.x / 4.0, maxf(120.0, S.y - PANEL_H - (GROUND_Y - 40)) / 4.0)
+	dark_rect.size = Vector2(S.x, S.y - PANEL_H)
+	_build_scenery(S.x)
+	if not busy and p.has("f"):
+		p.f.root.position.x = PX
+		e.f.root.position.x = EX
+
+func _build_scenery(w: float) -> void:
+	UIKit.clear(scen)
+	var pool: Array = G.THEMES[theme].solids
+	for row in 2:
+		var sc := 3.0 if row == 0 else 4.5
+		var y := GROUND_Y - (70.0 if row == 0 else 6.0)
+		var x := -40.0 + row * 30
+		var i := 0
+		while x < w + 40:
+			var name: String = pool[(i * 7 + row * 3) % pool.size()]
+			var t: Texture2D = G.tex("obj/%s.png" % name)
+			var sp := Sprite2D.new()
+			sp.texture = t
+			sp.scale = Vector2(sc, sc)
+			sp.position = Vector2(x, y - t.get_height() * sc / 2.0)
+			sp.modulate = Color(0.5, 0.55, 0.65) if row == 0 else Color(0.85, 0.85, 0.9)
+			# keep the middle of the front row open for the fighters
+			if row == 1 and x > w * 0.16 and x < w * 0.84:
+				x += t.get_width() * sc * 0.8
+				i += 1
+				continue
+			scen.add_child(sp)
+			x += t.get_width() * sc * (0.75 if row == 0 else 0.9)
+			i += 1
+
 func _build() -> void:
 	UIKit.clear(self)
+	_ready_resize()
+	var S := UIKit.screen()
+	PX = S.x * 0.258
+	EX = S.x * 0.742
 	var th: Dictionary = G.THEMES[theme]
 	# sky
-	var sky := TextureRect.new()
+	sky = TextureRect.new()
 	var gt := GradientTexture2D.new()
 	var gr := Gradient.new()
 	gr.set_color(0, Color(th.sky[0]))
@@ -118,45 +169,25 @@ func _build() -> void:
 	gt.height = 64
 	sky.texture = gt
 	sky.position = Vector2.ZERO
-	sky.size = Vector2(1280, GROUND_Y)
+	sky.size = Vector2(S.x, GROUND_Y)
 	sky.stretch_mode = TextureRect.STRETCH_SCALE
 	sky.z_index = -3
 	sky.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	add_child(sky)
 	# scenery rows (theme trees/rocks)
-	var scen := Node2D.new()
+	scen = Node2D.new()
 	add_child(scen)
-	var pool: Array = th.solids
-	for row in 2:
-		var sc := 3.0 if row == 0 else 4.5
-		var y := GROUND_Y - (70.0 if row == 0 else 6.0)
-		var x := -40.0 + row * 30
-		var i := 0
-		while x < 1320:
-			var name: String = pool[(i * 7 + row * 3) % pool.size()]
-			var t: Texture2D = G.tex("obj/%s.png" % name)
-			var sp := Sprite2D.new()
-			sp.texture = t
-			sp.scale = Vector2(sc, sc)
-			sp.position = Vector2(x, y - t.get_height() * sc / 2.0)
-			sp.modulate = Color(0.5, 0.55, 0.65) if row == 0 else Color(0.85, 0.85, 0.9)
-			if row == 1 and x > 200 and x < 1080:
-				x += t.get_width() * sc * 0.8
-				i += 1
-				continue
-			scen.add_child(sp)
-			x += t.get_width() * sc * (0.75 if row == 0 else 0.9)
-			i += 1
+	_build_scenery(S.x)
 	# ground
 	var gtile := AtlasTexture.new()
 	gtile.atlas = G.tex("tiles/TilesetFloor.png")
 	var gc: Vector2i = th.ground[0]
 	gtile.region = Rect2(gc.x * 16, gc.y * 16, 16, 16)
-	var ground := TextureRect.new()
+	ground = TextureRect.new()
 	ground.texture = gtile
 	ground.stretch_mode = TextureRect.STRETCH_TILE
 	ground.position = Vector2(0, GROUND_Y - 40)
-	ground.size = Vector2(1280 / 4.0, 120 / 4.0)
+	ground.size = Vector2(S.x / 4.0, maxf(120.0, S.y - PANEL_H - (GROUND_Y - 40)) / 4.0)
 	ground.scale = Vector2(4, 4)
 	ground.z_index = -1
 	if theme == "graveyard": ground.modulate = Color(0.55, 0.45, 0.68)
@@ -166,13 +197,13 @@ func _build() -> void:
 	add_child(stage_root)
 	dark_rect = ColorRect.new()
 	dark_rect.color = Color(0.25, 0, 0, 0)
-	dark_rect.size = Vector2(1280, 470)
+	dark_rect.size = Vector2(S.x, S.y - PANEL_H)
 	dark_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(dark_rect)
 	# bottom panel
 	var bottom := UIKit.panel()
-	bottom.position = Vector2(0, 470)
-	bottom.size = Vector2(1280, 250)
+	UIKit.anchor(bottom, [0, 1, 1, 1], [0, -PANEL_H, 0, 0])
+	bottom.grow_vertical = Control.GROW_DIRECTION_BEGIN   # if content ever gets taller, grow upward, never off-screen
 	add_child(bottom)
 	var hb := UIKit.hbox(14)
 	bottom.add_child(hb)
@@ -196,14 +227,20 @@ func _build() -> void:
 	right.add_child(uh)
 	tabs_box = UIKit.hbox(6)
 	right.add_child(tabs_box)
+	# the panel fits ~2.5 rows; more skills/items scroll instead of spilling off-screen
+	var sk_scroll := ScrollContainer.new()
+	sk_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	sk_scroll.custom_minimum_size = Vector2(0, 128)
+	sk_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	right.add_child(sk_scroll)
 	skill_grid = GridContainer.new()
 	skill_grid.columns = 2
 	skill_grid.add_theme_constant_override("h_separation", 8)
 	skill_grid.add_theme_constant_override("v_separation", 6)
-	right.add_child(skill_grid)
+	sk_scroll.add_child(skill_grid)
 	flash_rect = ColorRect.new()
 	flash_rect.color = Color(1, 1, 1, 0)
-	flash_rect.size = Vector2(1280, 720)
+	flash_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
 	flash_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(flash_rect)
 
@@ -251,7 +288,10 @@ func _fighter(is_p: bool, actor: String, d: Dictionary) -> Dictionary:
 
 func _info_panel(is_p: bool, actor: String) -> Dictionary:
 	var pn := UIKit.panel("nine_path_bg.png", [12, 8, 14, 8])
-	pn.position = Vector2(16, 12) if is_p else Vector2(1280 - 16 - 420, 12)
+	if is_p: pn.position = Vector2(16, 12)
+	else:
+		UIKit.anchor(pn, [1, 0, 1, 0], [-16 - 420, 12, -16, 12])
+		pn.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	pn.custom_minimum_size = Vector2(420, 0)
 	add_child(pn)
 	var hb := UIKit.hbox(10)
@@ -298,7 +338,7 @@ func _status_icons(box: HBoxContainer, u: Dictionary) -> void:
 	for k in u.st:
 		var inf: Array = ST_INFO[k]
 		var s: Dictionary = u.st[k]
-		var pc := PanelContainer.new()
+		var pc := RichTip.TipPanel.new()
 		var sb := UIKit.flat(Color(0, 0, 0, 0.55), Color("#5fd36a") if inf[3] else Color("#e05a4a"), 2, 4)
 		sb.set_content_margin_all(1)
 		pc.add_theme_stylebox_override("panel", sb)
@@ -345,6 +385,8 @@ func _refresh() -> void:
 		ult_btn.disabled = busy or over or chakra < 100
 		ult_btn.modulate = Color(1.3, 1.1, 0.8) if chakra >= 100 and not busy else Color.WHITE
 
+func _icon_view() -> bool: return G.P.get("skill_view", "list") == "icons"
+
 func _render_actions() -> void:
 	UIKit.clear(tabs_box)
 	for t in ACT_TABS:
@@ -354,42 +396,125 @@ func _render_actions() -> void:
 			_render_actions(), 15)
 		if t == tab: b.add_theme_stylebox_override("normal", UIKit.sbox("button_hover.png", [4, 3, 4, 3], [14, 6, 14, 7]))
 		tabs_box.add_child(b)
+	# list <-> icon-row toggle (remembered in the save)
+	var vb := UIKit.button("แบบรายการ" if _icon_view() else "แบบไอคอน", func() -> void:
+		G.P.skill_view = "list" if _icon_view() else "icons"
+		G.save_game()
+		_render_actions(), 13)
+	vb.tooltip_text = "สลับการแสดงปุ่ม: รายการพร้อมคำอธิบาย / ไอคอนแถวเดียว (ชี้เมาส์ดูรายละเอียด)\nลากไอคอนสกิลไปวางทับกันเพื่อสลับตำแหน่ง"
+	vb.theme = UIKit.tip_theme()
+	tabs_box.add_child(vb)
 	UIKit.clear(skill_grid)
+	skill_grid.columns = 10 if _icon_view() else 2
 	var dis := busy or over
 	var count := 0
 	if tab == "item":
 		for id in G.ITEMS:
 			var n: int = int(G.P.inv.get(id, 0))
-			if n <= 0 or G.ITEMS[id].has("tome"): continue
+			if n <= 0 or G.ITEMS[id].has("tome") or G.ITEMS[id].has("boost"): continue
 			var iid: String = id
-			var b := _action_button(G.ITEMS[id].icon, "%s ×%d" % [G.ITEMS[id].name, n], G.ITEMS[id].desc, func() -> void: use_item(iid))
+			var b := _action_button(G.ITEMS[id].icon, "%s ×%d" % [G.ITEMS[id].name, n], G.ITEMS[id].desc, func() -> void: use_item(iid), count, str(n))
 			b.disabled = dis
 			skill_grid.add_child(b)
 			count += 1
-		var fb := _action_button("skills/camouflage.png", "หลบหนี", "โอกาส %d%%" % (25 if e.boss else 50), flee)
+		var fb := _action_button("skills/camouflage.png", "หลบหนี", "โอกาส %d%%" % (25 if e.boss else 50), flee, count)
 		fb.disabled = dis
 		skill_grid.add_child(fb)
 	else:
-		for id in G.SKILLS:
+		for id in ordered_skills(tab):
 			var s: Dictionary = G.SKILLS[id]
 			var lv: int = int(G.P.skills.get(id, 0))
-			if s.tree != tab or lv <= 0 or s.kind == "passive": continue
 			var sid: String = id
-			var b := _action_button("skills/%s.png" % s.icon, "%s  Lv%d" % [s.name, lv], "MP %d · %s" % [s.mp, G.skill_desc(id, lv)], func() -> void: use_skill(sid))
+			var b := _action_button("skills/%s.png" % s.icon, "%s  Lv%d" % [s.name, lv], "MP %d · %s" % [s.mp, G.skill_desc(id, lv)], func() -> void: use_skill(sid), count)
 			b.disabled = dis or p.mp < s.mp
+			_make_draggable(b, sid, "skills/%s.png" % s.icon)
 			skill_grid.add_child(b)
 			count += 1
 		if count == 0:
 			skill_grid.add_child(UIKit.label("ยังไม่มีสกิลสายนี้ — เรียนได้ที่อาจารย์ไรเดน หรือเมนู (I)", 15, UIKit.MUTED))
 	_refresh()
 
-func _action_button(icon_path: String, title: String, sub: String, cb: Callable) -> Button:
-	var b := UIKit.button(title + "\n" + sub, cb, 14)
+## Learned active skills of a tree in the player's chosen order (new skills go to the end)
+func ordered_skills(tree: String) -> Array:
+	var learned := []
+	for id in G.SKILLS:
+		var s: Dictionary = G.SKILLS[id]
+		if s.tree == tree and s.kind != "passive" and int(G.P.skills.get(id, 0)) > 0: learned.append(id)
+	var out := []
+	for id in G.P.get("skill_order", {}).get(tree, []):
+		if id in learned and not id in out: out.append(id)
+	for id in learned:
+		if not id in out: out.append(id)
+	return out
+
+## Drop skill `from` onto `to`: `from` takes `to`'s place and the rest shift
+func move_skill(tree: String, from: String, to: String) -> void:
+	if from == to: return
+	var arr := ordered_skills(tree)
+	var at := arr.find(to)
+	arr.erase(from)
+	arr.insert(at, from)
+	if not G.P.has("skill_order"): G.P.skill_order = {}
+	G.P.skill_order[tree] = arr
+	G.save_game()
+	Sfx.play("ui")
+	_render_actions()
+
+func _make_draggable(b: Button, id: String, icon_path: String) -> void:
+	var tree: String = tab
+	b.set_drag_forwarding(func(_p: Vector2) -> Variant:
+		b.set_drag_preview(UIKit.icon(icon_path, 48))
+		return {"skill": id, "tree": tree},
+		func(_p: Vector2, data: Variant) -> bool:
+			return typeof(data) == TYPE_DICTIONARY and data.has("skill") and data.tree == tree,
+		func(_p: Vector2, data: Variant) -> void: move_skill(tree, data.skill, id))
+
+## List view: icon + name + description. Icon view: 56px icon with hotkey number, details on hover.
+func _action_button(icon_path: String, title: String, sub: String, cb: Callable, idx := -1, badge := "") -> Button:
+	var b: Button
+	if _icon_view():
+		b = UIKit.button("", cb, 14, true)
+		b.icon = UIKit.scaled(icon_path, 2)
+		b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		b.custom_minimum_size = Vector2(60, 60)
+		b.tooltip_text = ("[%d] " % (idx + 1) if idx >= 0 and idx < 9 else "") + title + "\n" + sub
+		b.theme = UIKit.tip_theme()
+		if idx >= 0 and idx < 9:
+			var n := UIKit.label(str(idx + 1), 12, UIKit.GOLD, true)
+			n.add_theme_constant_override("outline_size", 4)
+			n.add_theme_color_override("font_outline_color", Color.BLACK)
+			n.position = Vector2(4, 0)
+			n.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			b.add_child(n)
+		if badge != "":
+			var c := UIKit.label(badge, 13, Color.WHITE, true)
+			c.add_theme_constant_override("outline_size", 4)
+			c.add_theme_color_override("font_outline_color", Color.BLACK)
+			c.position = Vector2(40, 38)
+			c.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			b.add_child(c)
+		return b
+	# list view: the label is a RichTextLabel so HP/MP/status words get their colours
+	b = UIKit.button("", cb, 14, true)
 	b.icon = UIKit.scaled(icon_path, 2)
 	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	b.custom_minimum_size = Vector2(325, 50)
-	b.clip_text = true
-	b.tooltip_text = sub
+	b.custom_minimum_size = Vector2(318, 48)
+	b.clip_contents = true
+	b.tooltip_text = title + "\n" + sub
+	var rt := RichTextLabel.new()
+	rt.bbcode_enabled = true
+	rt.scroll_active = false
+	rt.autowrap_mode = TextServer.AUTOWRAP_OFF
+	rt.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	rt.add_theme_font_override("normal_font", UIKit.font_ui())
+	rt.add_theme_font_override("bold_font", UIKit.font_bold())
+	rt.add_theme_font_size_override("normal_font_size", 14)
+	rt.add_theme_font_size_override("bold_font_size", 14)
+	rt.position = Vector2(56, 3)
+	rt.size = Vector2(258, 44)
+	rt.text = "[b]%s[/b]\n%s" % [title.replace("[", "[lb]"), RichTip.colorize(sub)]
+	b.add_child(rt)
+	b.theme = UIKit.tip_theme()
 	return b
 
 func _log(t: String) -> void:
@@ -787,6 +912,7 @@ func _end(res: String) -> void:
 		if r.elite:
 			st = G.elite_stats(st)
 			rolls = G.ELITE_LOOT
+			G.P.elite_kills = int(G.P.get("elite_kills", 0)) + 1
 		G.P.kills[str(stage)] = int(G.P.kills.get(str(stage), 0)) + 1
 		G.P.wins += 1
 		if d.get("boss", false):
@@ -806,13 +932,18 @@ func _end(res: String) -> void:
 			if gid != "": loot["gear"] = gid
 		r.lines = G.add_loot(loot)
 		r.exp = st.exp
-		r.lv = G.gain_exp(st.exp)
+		if G.exp_boost_on():
+			r.exp = st.exp * G.EXP_BOOST_MUL
+			r["boost"] = true
+		r.lv = G.gain_exp(r.exp)
 		Sfx.play("win")
 	elif res == "lose":
+		G.P.deaths = int(G.P.get("deaths", 0)) + 1
 		r.lost = int(G.P.gold * 0.1)
 		G.P.gold -= r.lost
-		G.P.hp = G.max_hp()
-		G.P.mp = G.max_mp()
+		# wake up barely alive, so dying is never a free full heal
+		G.P.hp = maxi(1, ceili(G.max_hp() * 0.01))
+		G.P.mp = maxi(1, ceili(G.max_mp() * 0.01))
 		var inn: Vector2i = G.MAPS.village.inn
 		G.P.map = "village"
 		G.P.x = (inn.x + 0.5) * 16

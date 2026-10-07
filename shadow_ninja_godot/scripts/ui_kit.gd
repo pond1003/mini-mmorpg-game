@@ -95,6 +95,34 @@ static func theme() -> Theme:
 	_theme = t
 	return t
 
+static var _tip_theme: Theme
+
+## Theme with only the tooltip look, for controls that keep their own button style
+static func tip_theme() -> Theme:
+	if _tip_theme: return _tip_theme
+	var t := Theme.new()
+	t.set_stylebox("panel", "TooltipPanel", sbox("nine_path_bg.png", [5, 5, 5, 5], [12, 8, 12, 8]))
+	t.set_color("font_color", "TooltipLabel", PAPER)
+	t.set_font("font", "TooltipLabel", font_ui())
+	t.set_font_size("font_size", "TooltipLabel", 16)
+	_tip_theme = t
+	return t
+
+## Visible game area in UI units (at least 1280x720; grows with the window's aspect ratio)
+static func screen() -> Vector2:
+	return (Engine.get_main_loop() as SceneTree).root.get_visible_rect().size
+
+## Anchor a control: a = [left, top, right, bottom] anchors (0..1), o = matching pixel offsets
+static func anchor(c: Control, a: Array, o: Array) -> void:
+	c.anchor_left = a[0]
+	c.anchor_top = a[1]
+	c.anchor_right = a[2]
+	c.anchor_bottom = a[3]
+	c.offset_left = o[0]
+	c.offset_top = o[1]
+	c.offset_right = o[2]
+	c.offset_bottom = o[3]
+
 # ---------- widgets ----------
 static func label(text: String, size := 19, col := PAPER, bold := false) -> Label:
 	var l := Label.new()
@@ -113,8 +141,8 @@ static func rich(size := 17) -> RichTextLabel:
 	r.add_theme_font_size_override("bold_font_size", size)
 	return r
 
-static func button(text: String, cb: Callable, size := 18) -> Button:
-	var b := Button.new()
+static func button(text: String, cb: Callable, size := 18, rich_tip := false) -> Button:
+	var b: Button = RichTip.TipButton.new() if rich_tip else Button.new()
 	b.text = text
 	b.add_theme_font_size_override("font_size", size)
 	b.pressed.connect(func() -> void:

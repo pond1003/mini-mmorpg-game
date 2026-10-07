@@ -8,7 +8,9 @@ static func _arg(name: String) -> String:
 	return ""
 
 static func maybe_run(main: Node) -> void:
-	if _arg("shots") != "" or _arg("sim") != "": G.testing = true
+	if _arg("shots") != "" or _arg("sim") != "" or _arg("res") != "": G.testing = true
+	var res := _arg("res")
+	if res != "": _res(main, res)
 	var shots := _arg("shots")
 	if shots != "": _shots(main, shots)
 	var sim := _arg("sim")
@@ -294,6 +296,169 @@ static func _shots(main: Node, dir: String) -> void:
 	hw_n = 0
 	for en in main.world.enemies: hw_n += 1 if G.ENEMIES[en.stage].get("event", false) else 0
 	print("forest event yokai=", hw_n)
+	# ---- battle action panel with 5+ skills (caster tree) must stay on screen ----
+	G.P.skills.merge({"fire": 5, "heal": 5, "clone": 1, "thunder": 1, "dragon": 1}, true)
+	main.start_battle(17, null)
+	await _wait(main, 0.5)
+	main.battle.tab = "ninjutsu"
+	main.battle._render_actions()
+	await _wait(main, 0.3)
+	var last: Control = main.battle.skill_grid.get_child(main.battle.skill_grid.get_child_count() - 1)
+	var sc: ScrollContainer = main.battle.skill_grid.get_parent()
+	print("ninjutsu buttons=", main.battle.skill_grid.get_child_count(), " scroll box bottom=", sc.get_global_rect().end.y, " (screen 720)")
+	await _snap(main, dir, "18f_many_skills")
+	sc.ensure_control_visible(last)
+	await _wait(main, 0.3)
+	await _snap(main, dir, "18g_many_skills_scrolled")
+	# icon view + hover + drag-to-reorder
+	var bt2 = main.battle
+	G.P.skill_view = "icons"
+	bt2._render_actions()
+	await _wait(main, 0.3)
+	print("icon view order=", bt2.ordered_skills("ninjutsu"))
+	await _snap(main, dir, "18i_icon_view")
+	var ib: Control = bt2.skill_grid.get_child(2)
+	var mv2 := InputEventMouseMotion.new()
+	mv2.position = ib.get_global_rect().get_center()
+	mv2.global_position = mv2.position
+	Input.parse_input_event(mv2)
+	await _wait(main, 1.2)
+	await _snap(main, dir, "18j_icon_tooltip")
+	# real mouse drag: 5th icon onto the 1st
+	var src_c: Vector2 = bt2.skill_grid.get_child(4).get_global_rect().get_center()
+	var dst_c: Vector2 = bt2.skill_grid.get_child(0).get_global_rect().get_center()
+	var press := InputEventMouseButton.new()
+	press.button_index = MOUSE_BUTTON_LEFT
+	press.pressed = true
+	press.position = src_c
+	press.global_position = src_c
+	Input.parse_input_event(press)
+	await main.get_tree().process_frame
+	for i in 12:
+		var m := InputEventMouseMotion.new()
+		m.position = src_c.lerp(dst_c, (i + 1) / 12.0)
+		m.global_position = m.position
+		m.relative = (dst_c - src_c) / 12.0
+		m.button_mask = MOUSE_BUTTON_MASK_LEFT
+		Input.parse_input_event(m)
+		await main.get_tree().process_frame
+	print("dragging mid=", main.get_viewport().gui_is_dragging(), " src disabled=", (bt2.skill_grid.get_child(4) as Button).disabled, " busy=", bt2.busy, " src_c=", src_c, " dst_c=", dst_c)
+	var rel := InputEventMouseButton.new()
+	rel.button_index = MOUSE_BUTTON_LEFT
+	rel.pressed = false
+	rel.position = dst_c
+	rel.global_position = dst_c
+	Input.parse_input_event(rel)
+	await _wait(main, 0.3)
+	print("after drag order=", bt2.ordered_skills("ninjutsu"), " saved=", G.P.get("skill_order", {}))
+	await _snap(main, dir, "18k_icon_reordered")
+	G.P.skill_view = "list"
+	bt2._render_actions()
+	await _wait(main, 0.2)
+	print("list view first button=", (bt2.skill_grid.get_child(0) as Button).text.get_slice("
+", 0))
+	main.battle.visible = false
+	main.state = "world"
+	# ---- bug report (F8) during a battle ----
+	main.start_battle(17, null)
+	await _wait(main, 0.5)
+	_key(KEY_F8, true)
+	_key(KEY_F8, false)
+	await _wait(main, 0.5)
+	var te: TextEdit = null
+	for c in ui.modal_box.get_children():
+		if c is TextEdit: te = c
+	print("bug dialog open=", ui.modal.visible, " has textedit=", te != null)
+	te.text = "ทดสอบรายงานบั๊ก: สกิลหลุดขอบจอ"
+	await _snap(main, dir, "18h_bug_report")
+	var where: String = ui.save_bug_report(te.text, true)
+	ui.close_modal()
+	print("bug saved to ", where, " json=", FileAccess.file_exists(where + "/report.json"), " png=", FileAccess.file_exists(where + "/screenshot.png"))
+	print(FileAccess.get_file_as_string(where + "/report.json").substr(0, 300))
+	main.battle.visible = false
+	main.state = "world"
+	# ---- EXP boost scroll ----
+	G.P.gold = 3000
+	ui.open_shop("buy")
+	await _wait(main, 0.3)
+	await _snap(main, dir, "18a_shop_exp_scroll")
+	ui._buy("exp_scroll", 1)
+	ui.close_modal()
+	print("bought scroll inv=", G.P.inv.get("exp_scroll", 0), " gold=", G.P.gold)
+	ui._bag_primary("item", "exp_scroll")
+	print("boost left=", G.exp_boost_left(), " focus=", main.get_window().has_focus())
+	await _wait(main, 2.0)
+	var after_play := G.exp_boost_left()
+	ui.open_menu("bag")
+	await _wait(main, 2.0)
+	var after_menu := G.exp_boost_left()
+	await _snap(main, dir, "18c_exp_bag")
+	ui.close_menu()
+	print("boost after 2s play=", after_play, " after 2s in menu=", after_menu)
+	main.start_battle(17, null)
+	await _wait(main, 0.5)
+	var ex0: int = G.enemy_stats(17).exp
+	var exp_before: int = G.P.exp
+	main.battle.e.hp = 0
+	await main.battle._check_end()
+	await _wait(main, 0.4)
+	print("boosted battle exp base=", ex0, " gained=", G.P.exp - exp_before, " (lvl may have changed)")
+	await _snap(main, dir, "18d_exp_win")
+	main.ui.close_modal()
+	main.battle.visible = false
+	main.state = "world"
+	await _wait(main, 0.3)
+	await _snap(main, dir, "18e_exp_hud")
+	G.P.exp_boost = 0.0
+	# ---- game clear: final quest current + shogun down -> ending, achievements ----
+	var f0 := FileAccess.open(G.ach_path(), FileAccess.WRITE)
+	f0.store_string("{}")
+	f0 = null
+	G.load_achievements()
+	G.P.quest.i = G.MAIN_QUESTS.size() - 1
+	G.P.quest.active = true
+	G.P.quest.base = G.P.kills.duplicate()
+	G.P.erase("cleared")
+	G.P.flags.erase("boss15")
+	G.P.deaths = 0
+	print("clear ready before boss=", G.game_clear_ready())
+	main.start_battle(15, "boss")
+	await _wait(main, 0.5)
+	main.battle.e.hp = 0
+	await main.battle._check_end()
+	await _wait(main, 0.4)
+	print("clear ready after boss=", G.game_clear_ready())
+	for c in ui.modal_box.get_children():
+		if c is HBoxContainer:
+			for bb in c.get_children():
+				if bb is Button and bb.text == "ไปต่อ": bb.pressed.emit()
+	await _wait(main, 0.6)
+	print("ending shown=", ui.modal.visible, " cleared=", G.P.get("cleared", false), " achievements=", G.achievements.keys())
+	await _snap(main, dir, "18l_ending")
+	ui.close_modal()
+	ui.open_achievements()
+	await _wait(main, 0.4)
+	await _snap(main, dir, "18m_achievements")
+	ui.close_modal()
+	print("clear again ready=", G.game_clear_ready())
+	G.P.map = "village"
+	main.world.load_map("village")
+	# ---- defeat: back to the inn with 1% HP/MP ----
+	main.start_battle(17, null)
+	await _wait(main, 0.5)
+	var lost_gold: int = G.P.gold
+	main.battle.p.hp = 0
+	await main.battle._check_end()
+	await _wait(main, 0.4)
+	print("defeat hp=", G.P.hp, "/", G.max_hp(), " mp=", G.P.mp, "/", G.max_mp(), " map=", G.P.map, " gold lost=", lost_gold - G.P.gold)
+	await _snap(main, dir, "18b_defeat")
+	main.ui.close_modal()
+	main.battle.visible = false
+	main.state = "world"
+	G.fix_player()
+	print("after fix_player hp=", G.P.hp)
+	G.P.map = "graveyard"
+	main.world.load_map("graveyard")
 	# ---- rare slimes ----
 	main.start_battle(22, null)
 	await _wait(main, 0.7)
@@ -483,3 +648,110 @@ static func _bot_fight(main: Node, stage: int) -> String:
 	G.P.gold = gold0
 	G.P.inv = inv0
 	return res[0]
+
+
+# ================= responsive check =================
+## Visible Controls (UI + battle layers) that stick out of the screen; ScrollContainers clip their children
+static func _overflow(main: Node) -> Array:
+	var S := UIKit.screen()
+	var scr := Rect2(Vector2.ZERO, S).grow(1.0)
+	var bad := []
+	for top in [main.ui, main.battle]:
+		if not top.visible: continue
+		var stack := [top]
+		while stack.size() > 0:
+			var n: Node = stack.pop_back()
+			for c in n.get_children(): stack.append(c)
+			if not (n is Control) or not (n as Control).is_visible_in_tree(): continue
+			var c: Control = n
+			var r := c.get_global_rect()
+			if r.size.x < 1 or r.size.y < 1: continue
+			var clip := scr
+			var a := c.get_parent()
+			while a:
+				if a is Control and (a as Control).clip_contents: clip = clip.intersection((a as Control).get_global_rect())
+				a = a.get_parent()
+			if clip.size.x <= 0 or clip.size.y <= 0: continue
+			r = r.intersection(clip) if clip != scr else r
+			if not scr.encloses(r):
+				bad.append("%s %s" % [str(c.get_path()).replace("/root/Main/", ""), str(r)])
+	return bad
+
+static func _check(main: Node, dir: String, tag: String, issues: Array) -> void:
+	await _wait(main, 0.35)
+	var bad := _overflow(main)
+	for b in bad: issues.append("%s: %s" % [tag, b])
+	await _snap(main, dir, tag)
+
+static func _res(main: Node, dir: String) -> void:
+	var ui = main.ui
+	var sizes := [Vector2i(1280, 720), Vector2i(1448, 794), Vector2i(1024, 768), Vector2i(1920, 1080), Vector2i(2560, 1080), Vector2i(800, 600), Vector2i(1366, 768)]
+	var issues := []
+	G.P = G.new_player("ทดสอบจอ", "caster")
+	G.P.lvl = 25
+	G.P.gold = 99999
+	G.P.skills.merge({"fire": 5, "heal": 5, "clone": 1, "thunder": 1, "dragon": 5, "chakra_flow": 2, "hex": 1}, true)
+	G.P.inv = {"potion": 5, "hipotion": 3, "ether": 4, "elixir": 2, "bomb": 3, "smoke": 1, "exp_scroll": 1}
+	G.P.owned.append_array(["steel_katana", "kage_blade", "jade_charm", "chain", "venom_star", "sage_wand"])
+	G.P.exp_boost = 600.0
+	for sz in sizes:
+		main.get_window().size = sz
+		await _wait(main, 0.5)
+		var tag := "%dx%d" % [sz.x, sz.y]
+		var S := UIKit.screen()
+		print("window ", tag, " -> screen ", S)
+		main.to_title()
+		await _check(main, dir, tag + "_01_title", issues)
+		ui.show_slots("load")
+		await _check(main, dir, tag + "_02_slots", issues)
+		ui.show_class_select()
+		await _check(main, dir, tag + "_03_class", issues)
+		main.start_game(false)
+		G.P.map = "village"
+		G.P.x = 20.5 * 16
+		G.P.y = 13.5 * 16
+		main.world.load_map("village")
+		await _check(main, dir, tag + "_04_world", issues)
+		ui.talk_elder()
+		await _check(main, dir, tag + "_05_dialog", issues)
+		while ui.dialog.visible: ui.advance_dialog()
+		ui.close_modal()
+		for t in ["stats", "skills", "bag", "quests", "beast", "sys"]:
+			ui.open_menu(t)
+			await _check(main, dir, tag + "_06_menu_" + t, issues)
+		ui.close_menu()
+		ui.open_shop("buy")
+		await _check(main, dir, tag + "_07_shop", issues)
+		ui.open_forge()
+		await _check(main, dir, tag + "_08_forge", issues)
+		ui.close_modal()
+		for view in ["list", "icons"]:
+			G.P.skill_view = view
+			main.start_battle(15, "boss")
+			await _wait(main, 0.4)
+			main.battle.tab = "ninjutsu"
+			main.battle._render_actions()
+			await _check(main, dir, tag + "_09_battle_" + view, issues)
+			# hover the last skill: the tooltip must stay on screen
+			# right-most fully visible button (list view scrolls, so use the top row there)
+			var lastb: Control = main.battle.skill_grid.get_child(1 if view == "list" else main.battle.skill_grid.get_child_count() - 1)
+			var hm := InputEventMouseMotion.new()
+			hm.position = main.get_viewport().get_final_transform() * lastb.get_global_rect().get_center()   # window pixels
+			hm.global_position = hm.position
+			Input.parse_input_event(hm)
+			await _wait(main, 0.7)
+			var tp = RichTip._panel
+			if tp == null or not tp.visible: issues.append("%s_%s: tooltip did not show" % [tag, view])
+			elif not Rect2(Vector2.ZERO, UIKit.screen()).grow(1).encloses(tp.get_global_rect()): issues.append("%s_%s: tooltip off-screen %s" % [tag, view, tp.get_global_rect()])
+			await _snap(main, dir, tag + "_09b_tip_" + view)
+			main.battle.tab = "item"
+			main.battle._render_actions()
+			await _check(main, dir, tag + "_10_items_" + view, issues)
+			main.battle.visible = false
+			main.state = "world"
+		ui.open_bug_report()
+		await _check(main, dir, tag + "_11_bug", issues)
+		ui.close_modal()
+	print("RES issues=", issues.size())
+	for i in issues: print("  ", i)
+	main.get_tree().quit()

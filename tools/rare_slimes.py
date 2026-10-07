@@ -40,3 +40,8 @@ for k, h in {"str": "#e04a3a", "agi": "#3ad06a", "int": "#4a8aff", "vit": "#ffb0
     light = tuple(min(255, int(c + (255 - c) * 0.55)) for c in base)
     recolor(Image.open(BOOK), [dark, base, light, (255, 255, 255)]).save(f"{DST}/../icons/tome_{k}.png")
 print("ok")
+
+# EXP boost scroll: golden-green recolour of the scroll icon
+SCROLL = r"C:/Holy/ai cluade/shadow_ninja_godot/assets/icons/scroll.png"
+recolor(Image.open(SCROLL), [hexc("#2a5a1a"), hexc("#5fb83a"), hexc("#c8f070"), hexc("#fff8c0")]).save(f"{DST}/../icons/exp_scroll.png")
+print("exp scroll ok")

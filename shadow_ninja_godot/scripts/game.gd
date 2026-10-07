@@ -119,6 +119,7 @@ const ITEMS := {
 	"elixir": {"name": "น้ำอมฤต", "desc": "ฟื้น HP/MP เต็ม", "price": 250, "hp": 99999, "mp": 99999, "icon": "icons/elixir.png"},
 	"bomb": {"name": "ระเบิดเพลิง", "desc": "ความเสียหาย 50+Lv×8 + ไหม้", "price": 45, "battle": true, "icon": "icons/bomb.png"},
 	"smoke": {"name": "ตะปูเรือใบ", "desc": "โปรยแล้วหนีการต่อสู้ได้แน่นอน", "price": 35, "battle": true, "icon": "icons/smoke.png"},
+	"exp_scroll": {"name": "ใบเพิ่มค่าประสบการณ์", "desc": "EXP จากมอนสเตอร์ x2 นาน 15 นาที (นับเวลาเฉพาะตอนเล่น ใช้ซ้ำ = ต่อเวลา)", "price": 1000, "boost": true, "icon": "icons/exp_scroll.png"},
 	# stat tomes (rainbow slime): permanent +1, kept through stat resets; price 0 = not sold in shops, "sell" = buy-back value
 	"tome_str": {"name": "คัมภีร์พลัง", "desc": "STR +1 ถาวร (ไม่หายเมื่อล้างแต้ม)", "price": 0, "sell": 1000, "tome": "str", "icon": "icons/tome_str.png"},
 	"tome_agi": {"name": "คัมภีร์ความไว", "desc": "AGI +1 ถาวร (ไม่หายเมื่อล้างแต้ม)", "price": 0, "sell": 1000, "tome": "agi", "icon": "icons/tome_agi.png"},
@@ -295,6 +296,24 @@ func stat(k: String) -> int:
 	return n
 
 ## Read a stat tome: +1 forever to its stat
+# ---- EXP boost scroll: P.exp_boost = seconds left, ticks only while actually playing (see main.gd) ----
+const EXP_BOOST_MUL := 2
+const EXP_BOOST_SEC := 15 * 60.0
+const EXP_BOOST_CAP := 4 * 60 * 60.0
+
+func exp_boost_left() -> float: return float(P.get("exp_boost", 0.0))
+func exp_boost_on() -> bool: return exp_boost_left() > 0.0
+
+func use_exp_boost() -> void:
+	if int(P.inv.get("exp_scroll", 0)) <= 0: return
+	P.inv["exp_scroll"] = int(P.inv["exp_scroll"]) - 1
+	P.exp_boost = minf(exp_boost_left() + EXP_BOOST_SEC, EXP_BOOST_CAP)
+	save_game()
+
+static func mmss(sec: float) -> String:
+	var s := int(ceil(sec))
+	return "%d:%02d:%02d" % [s / 3600, (s / 60) % 60, s % 60] if s >= 3600 else "%d:%02d" % [s / 60, s % 60]
+
 func use_tome(id: String) -> void:
 	if int(P.inv.get(id, 0)) <= 0: return
 	var k: String = ITEMS[id].tome
@@ -543,6 +562,70 @@ func quest_done(q: Dictionary) -> bool:
 		if r.have < r.n: return false
 	return true
 
+# ================= game clear + achievements =================
+const FINAL_BOSS := 15
+## Account-wide (shared by all save slots): id -> [title, how to get it]
+const ACHIEVEMENTS := {
+	"clear_ninja": ["จบเกมด้วยสายนินจา", "ปราบโชกุนเงาและทำภารกิจหลักครบด้วยนินจา"],
+	"clear_warrior": ["จบเกมด้วยสายนักรบ", "ปราบโชกุนเงาและทำภารกิจหลักครบด้วยนักรบ"],
+	"clear_caster": ["จบเกมด้วยสายจอมเวท", "ปราบโชกุนเงาและทำภารกิจหลักครบด้วยจอมเวท"],
+	"clear_balanced": ["จบเกมด้วยสายสมดุล", "ปราบโชกุนเงาและทำภารกิจหลักครบด้วยสายสมดุล"],
+	"no_death": ["ไร้พ่าย", "จบเกมโดยไม่แพ้การต่อสู้เลยสักครั้ง"],
+	"gold_slime": ["นักล่าขุมทรัพย์", "ปราบสไลม์ทองคำ"],
+	"rainbow_slime": ["ผู้ไล่ตามสายรุ้ง", "ปราบสไลม์สายรุ้ง"],
+	"elite10": ["นักล่า Elite", "ปราบมอนสเตอร์ Elite ครบ 10 ตัว"],
+	"forge10": ["ช่างตีเหล็กในตำนาน", "ตีอุปกรณ์ชิ้นใดก็ได้ถึง +10"],
+	"halloween": ["ราชาแห่งคืนวิญญาณ", "ปราบราชาภูตพรายขาวในเทศกาลฮาโลวีน"],
+}
+var achievements := {}   # id -> {"time", "name", "cls"}
+
+## Achievements that can still be earned (class clears for hidden classes only show once earned)
+func ach_visible() -> Array:
+	var out := []
+	for id in ACHIEVEMENTS:
+		var c: String = id.trim_prefix("clear_") if id.begins_with("clear_") else ""
+		if c != "" and CLASSES.get(c, {}).get("hidden", false) and not achievements.has(id): continue
+		out.append(id)
+	return out
+
+func ach_count() -> String:
+	var n := 0
+	for id in ach_visible(): n += 1 if achievements.has(id) else 0
+	return "%d/%d" % [n, ach_visible().size()]
+
+func ach_path() -> String: return "user://%s.json" % ("test_achievements" if testing else "achievements")
+
+func load_achievements() -> void:
+	var d = JSON.parse_string(FileAccess.get_file_as_string(ach_path())) if FileAccess.file_exists(ach_path()) else null
+	achievements = d if typeof(d) == TYPE_DICTIONARY else {}
+
+## Final quest reached (accepted or not) and the shogun is down
+func game_clear_ready() -> bool:
+	if P.is_empty() or P.get("cleared", false) or not P.flags.has("boss%d" % FINAL_BOSS): return false
+	return int(P.quest.i) >= MAIN_QUESTS.size() - 1
+
+func kills_of(stage: int) -> int: return int(P.kills.get(str(stage), 0))
+
+## Unlocks whatever is newly earned by the current character; returns the new ids
+func check_achievements() -> Array:
+	if P.is_empty(): return []
+	var got := {
+		"clear_" + str(P.cls): P.get("cleared", false),
+		"no_death": P.get("cleared", false) and int(P.get("deaths", 0)) == 0,
+		"gold_slime": kills_of(21) > 0, "rainbow_slime": kills_of(22) > 0,
+		"elite10": int(P.get("elite_kills", 0)) >= 10, "halloween": kills_of(20) > 0,
+		"forge10": P.up.values().any(func(u) -> bool: return int(u) >= 10),
+	}
+	var fresh := []
+	for id in got:
+		if got[id] and ACHIEVEMENTS.has(id) and not achievements.has(id):
+			achievements[id] = {"time": Time.get_datetime_string_from_system(false, true), "name": P.name, "cls": P.cls}
+			fresh.append(id)
+	if fresh.size() > 0:
+		var f := FileAccess.open(ach_path(), FileAccess.WRITE)
+		if f: f.store_string(JSON.stringify(achievements, "  "))
+	return fresh
+
 func current_quest() -> Dictionary:
 	return MAIN_QUESTS[P.quest.i] if P.quest.i < MAIN_QUESTS.size() else {}
 
@@ -622,7 +705,7 @@ func slot_info(s: int) -> Dictionary:
 	if not has_save(s): return {}
 	var d = JSON.parse_string(FileAccess.get_file_as_string(save_path(s)))
 	if typeof(d) != TYPE_DICTIONARY: return {"broken": true}
-	return {"name": d.get("name", "?"), "cls": d.get("cls", "balanced"), "lvl": int(d.get("lvl", 1)), "map": d.get("map", "village"),
+	return {"name": d.get("name", "?"), "cls": d.get("cls", "balanced"), "lvl": int(d.get("lvl", 1)), "map": d.get("map", "village"), "cleared": d.get("cleared", false),
 		"gold": int(d.get("gold", 0)), "saved_at": d.get("saved_at", "")}
 
 func first_free_slot() -> int:
@@ -652,6 +735,7 @@ func delete_save(s := -1) -> void:
 
 func _ready() -> void:
 	rng.randomize()
+	load_achievements.call_deferred()   # after autotest decides whether this is a test run
 	# keep a save from the single-slot version
 	if FileAccess.file_exists(OLD_SAVE) and not FileAccess.file_exists("user://save_1.json"):
 		DirAccess.rename_absolute(ProjectSettings.globalize_path(OLD_SAVE), ProjectSettings.globalize_path("user://save_1.json"))

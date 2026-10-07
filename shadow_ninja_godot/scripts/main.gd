@@ -72,18 +72,38 @@ func _on_battle_ended(r: Dictionary) -> void:
 		ui.hud.visible = true
 		state = "world"
 		if r.res == "win" or r.res == "escaped": world.enemy_defeated(r.src)
+		ui.announce_achievements(G.check_achievements())
+		if G.game_clear_ready(): ui.show_ending.call_deferred()
 		if r.res == "lose" or world.map_id != G.P.map: world.load_map(G.P.map)
 		else: Sfx.music(G.THEMES[world.theme].music)
 		world.inv = 2.0)
 
 func _process(_dt: float) -> void:
 	world.paused = state != "world" or ui.blocking()
+	_tick_exp_boost(_dt)
+	_tick_playtime(_dt)
 	if state == "world" and world.map_id != "":
 		ui.update_hud(G.MAPS[world.map_id].name, world.prompt_text())
+
+## EXP scroll timer: real seconds, but only while playing (not in menus/shops/dialogs, not when the window is unfocused)
+func _tick_playtime(dt: float) -> void:
+	if G.P.is_empty() or not (state == "world" or state == "battle") or ui.blocking(): return
+	G.P.play_sec = float(G.P.get("play_sec", 0.0)) + dt / maxf(Engine.time_scale, 0.001)
+
+func _tick_exp_boost(dt: float) -> void:
+	if not G.exp_boost_on() or not (state == "world" or state == "battle"): return
+	if ui.blocking() or not (get_window().has_focus() or G.testing): return
+	G.P.exp_boost = maxf(0.0, G.exp_boost_left() - dt / maxf(Engine.time_scale, 0.001))
+	if G.P.exp_boost <= 0.0:
+		G.save_game()
+		ui.toast("ใบเพิ่มค่าประสบการณ์หมดเวลาแล้ว", UIKit.MUTED)
 
 func _unhandled_input(ev: InputEvent) -> void:
 	if not (ev is InputEventKey) or not ev.pressed or ev.echo: return
 	var k: int = ev.physical_keycode
+	if k == KEY_F8:
+		ui.open_bug_report()
+		return
 	if state != "world": return
 	if ui.dialog.visible:
 		if k in [KEY_E, KEY_SPACE, KEY_ENTER]: ui.advance_dialog()

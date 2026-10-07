@@ -15,8 +15,13 @@
 ## Testing
 - Screenshots walkthrough: `Godot_v4.7.2-stable_win64_console.exe --path shadow_ninja_godot -- --shots=<dir>`
 - Full bot playthrough: `... --path shadow_ninja_godot -- --sim=<ninja|warrior|caster|balanced>` (prints `SIM ...` summary incl. rare-slime win rates)
+- Responsive check: `... -- --res=<dir>` (7 window sizes x main screens, reports Controls outside the screen + tooltip position; expect `RES issues=0`)
 - Parse check: `... --headless --path shadow_ninja_godot --import`
 - **Tests must never touch the user's real saves**: autotest sets `G.testing`, so saves go to `user://test_save_N.json` instead of `save_N.json`. Keep it that way.
 
 ## Assets
 `tools/build_assets.py` copies from the Ninja Adventure pack (`tools/NinjaAdventure/`, not in git — re-download from itch.io); `tools/halloween_art.py` and `tools/rare_slimes.py` generate the self-made sprites.
+
+## Logs
+- User-reported bugs (chat, or in-game F8 reports saved to `user://bug_reports/<time>/report.json` + `screenshot.png`) go in `claude-workspace/ISSUES.md` (symptom / cause / fix / test / status).
+- Every action taken goes in `claude-workspace/AUDIT_LOG.md`; open tasks in `TODO.md`.
